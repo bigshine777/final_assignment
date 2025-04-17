@@ -10,6 +10,7 @@
 const int in1 = 784, out1 = 128;
 const int in2 = out1, out2 = 256;
 const int in3 = out2, out3 = 10;
+
 const float learning_rate = 1.0f;
 const int mini_batch = 100;
 const int epoc = 20;
