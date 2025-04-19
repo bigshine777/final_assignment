@@ -1,0 +1,11 @@
+//  画像を28*28のbmpにし、予測モードで実行
+magick input.png -resize 28x28! -type Grayscale output.bmp
+./final_assignment parameter_fc1.bin parameter_fc2.bin parameter_fc3.bin output.bmp ←pngを28*28に変換
+
+// コンパイルして実行
+clang final_assignment.c -o final_assignment
+./final_assignment
+
+//  画像を作成し、実行
+magick -size 28x28 xc:black -pointsize 24 -fill white -draw "text 7,23 '4'" picture/img4.bmp
+./final_assignment parameter_fc1.bin parameter_fc2.bin parameter_fc3.bin picture/img4.bmp
