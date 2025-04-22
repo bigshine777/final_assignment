@@ -14,7 +14,7 @@ float *matrix1, *vector1, *matrix2, *vector2, *matrix3, *vector3;
 
 float learning_rate = 0.01f;
 const int mini_batch = 100;
-const int epoc = 50;
+const int epoc = 500;
 
 // 複数のmallocを解放
 void free_many(float **params, int count)
@@ -265,6 +265,28 @@ void update_parameters(float *matrix, float *vector, float *grad_mx, float *grad
     }
 }
 
+void manage_learning(float *grad_mx1, float *grad_v1, float *grad_mx2, float *grad_v2, float *grad_mx3, float *grad_v3,
+                     float current_loss, float *last_loss)
+{
+    if (current_loss > *last_loss + 0.05f)
+    {
+        learning_rate *= 1.2f;
+    }
+    else
+    {
+        learning_rate *= 0.98f;
+    }
+
+    update_parameters(matrix1, vector1, grad_mx1, grad_v1, in1, out1);
+    update_parameters(matrix2, vector2, grad_mx2, grad_v2, in2, out2);
+    update_parameters(matrix3, vector3, grad_mx3, grad_v3, in3, out3);
+
+    *last_loss = current_loss;
+    printf("損失関数の平均 : %f ,学習率 : %.4f\n", current_loss, learning_rate * 100);
+
+    learning_rate = 0.01f;
+}
+
 // 行列とベクトルのパラメータをファイルに保存
 void save_parameters(const char *filename, int outsize, int insize, float *matrix, float *vector)
 {
@@ -440,9 +462,12 @@ int main(int argc, char *argv[])
         float *grad_mx3 = malloc(in3 * out3 * sizeof(float));
         float *grad_v3 = malloc(out3 * sizeof(float));
 
+        float current_loss = 0;
+        float last_loss = FLT_MAX; // 1回目は必ず良くなっていることから前回の損失関数は最大としておく
+
         for (int j = 0; j < epoc; j++)
         {
-            learning_rate *= 0.97;
+            current_loss = 0;
 
             shuffle_train_data(train_x, (char *)train_y, train_count);
 
@@ -460,17 +485,15 @@ int main(int argc, char *argv[])
                 backward_pass(&train_x[i * in1 * mini_batch], answer, sfmax_input, final_output, fc3_input, relu2_input,
                               fc2_input, relu1_input, matrix1, matrix2, matrix3, grad_fc3, grad_fc2, grad_fc1, grad_relu2, grad_relu1, grad_relu0, grad_mx3, grad_v3, grad_mx2, grad_v2, grad_mx1, grad_v1, mini_batch);
 
-                update_parameters(matrix1, vector1, grad_mx1, grad_v1, in1, out1);
-                update_parameters(matrix2, vector2, grad_mx2, grad_v2, in2, out2);
-                update_parameters(matrix3, vector3, grad_mx3, grad_v3, in3, out3);
-            }
+                current_loss = calc_loss(final_output, answer, out3, mini_batch);
 
-            printf("損失関数の平均 : %f\n", calc_loss(final_output, answer, out3, mini_batch));
+                manage_learning(grad_mx1, grad_v1, grad_mx2, grad_v2, grad_mx3, grad_v3, current_loss, &last_loss);
+            }
         }
 
         float *params_1[] = {final_output, answer, grad_fc3, grad_fc2, grad_fc1, grad_relu2,
-                             grad_relu1, grad_relu0, relu1_input, fc2_input, relu2_input, fc3_input, 
-                             sfmax_input,grad_mx1, grad_v1, grad_mx2, grad_v2, grad_mx3, grad_v3, train_x};
+                             grad_relu1, grad_relu0, relu1_input, fc2_input, relu2_input, fc3_input,
+                             sfmax_input, grad_mx1, grad_v1, grad_mx2, grad_v2, grad_mx3, grad_v3, train_x};
         free_many(params_1, sizeof(params_1) / sizeof(params_1[0]));
         free(train_y);
 
