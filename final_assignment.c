@@ -270,11 +270,11 @@ void manage_learning(float *grad_mx1, float *grad_v1, float *grad_mx2, float *gr
 {
     if (current_loss > *last_loss * 1.7f)
     {
-        learning_rate *= current_loss * 1.2f;
+        learning_rate *= 1.2f;
     }
     else
     {
-        learning_rate *= current_loss;
+        learning_rate *= 0.98f;
     }
 
     update_parameters(matrix1, vector1, grad_mx1, grad_v1, in1, out1);
@@ -284,7 +284,14 @@ void manage_learning(float *grad_mx1, float *grad_v1, float *grad_mx2, float *gr
     *last_loss = current_loss;
     printf("損失関数の平均 : %f ,学習率 : %.4f\n", current_loss, learning_rate);
 
-    learning_rate = 0.05f;
+    FILE *fp = fopen("loss_history.csv", "a"); // "a"は追記モード
+    if (fp != NULL)
+    {
+        fprintf(fp, "%f\n", current_loss);
+        fclose(fp);
+    }
+
+    learning_rate = 0.01f;
 }
 
 // 行列とベクトルのパラメータをファイルに保存
