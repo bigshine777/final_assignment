@@ -14,7 +14,7 @@ float *matrix1, *vector1, *matrix2, *vector2, *matrix3, *vector3;
 
 float learning_rate = 0.01f;
 const int mini_batch = 100;
-const int epoc = 500;
+const int epoc = 100;
 
 // 複数のmallocを解放
 void free_many(float **params, int count)
@@ -268,13 +268,13 @@ void update_parameters(float *matrix, float *vector, float *grad_mx, float *grad
 void manage_learning(float *grad_mx1, float *grad_v1, float *grad_mx2, float *grad_v2, float *grad_mx3, float *grad_v3,
                      float current_loss, float *last_loss)
 {
-    if (current_loss > *last_loss + 0.05f)
+    if (current_loss > *last_loss * 1.7f)
     {
-        learning_rate *= 1.2f;
+        learning_rate *= current_loss * 1.2f;
     }
     else
     {
-        learning_rate *= 0.98f;
+        learning_rate *= current_loss;
     }
 
     update_parameters(matrix1, vector1, grad_mx1, grad_v1, in1, out1);
@@ -282,9 +282,9 @@ void manage_learning(float *grad_mx1, float *grad_v1, float *grad_mx2, float *gr
     update_parameters(matrix3, vector3, grad_mx3, grad_v3, in3, out3);
 
     *last_loss = current_loss;
-    printf("損失関数の平均 : %f ,学習率 : %.4f\n", current_loss, learning_rate * 100);
+    printf("損失関数の平均 : %f ,学習率 : %.4f\n", current_loss, learning_rate);
 
-    learning_rate = 0.01f;
+    learning_rate = 0.05f;
 }
 
 // 行列とベクトルのパラメータをファイルに保存
