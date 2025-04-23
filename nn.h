@@ -809,7 +809,7 @@ extern "C"
 #define STBI_NO_ZLIB
 #endif
 
-#include <stdarg.h>
+// #include <stdarg.h>
 #include <stddef.h> // ptrdiff_t on osx
 #include <stdlib.h>
 #include <string.h>
@@ -8645,7 +8645,7 @@ extern int stbi_write_tga_with_rle;
 #include <stdio.h>
 #endif // STBI_WRITE_NO_STDIO
 
-#include <stdarg.h>
+// #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>

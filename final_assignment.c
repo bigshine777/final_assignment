@@ -12,10 +12,11 @@ const int in3 = out2, out3 = 10;
 
 float *matrix1, *vector1, *matrix2, *vector2, *matrix3, *vector3;
 
-float learning_rate = 0.01f;
-float memory_rate = 0.9f;
-const int mini_batch = 100;
-const int epoc = 100;
+float learning_rate = 0.001f;
+float beta1 = 0.9f;
+float beta2 = 0.999f;
+const int mini_batch = 200;
+const int epoc = 10;
 
 // 複数のmallocを解放
 void free_many(float **params, int count)
@@ -254,28 +255,31 @@ void reset_grads(float *grad_mx, float *grad_v, int insize, int outsize)
 
 // パラメータを更新(Adamモデルを使用)
 void update_parameters(float *matrix, float *vector, float *grad_mx, float *grad_v, int insize, int outsize,
-                       float *mom_mx, float *ada_mx, float *mom_v, float *ada_v)
+                       float *mom_mx, float *ada_mx, float *mom_v, float *ada_v, int t)
 {
+    float b1t = 1.0f - powf(beta1, t + 1);
+    float b2t = 1.0f - powf(beta2, t + 1);
+
     for (int i = 0; i < insize * outsize; i++)
     {
-        ada_mx[i] += grad_mx[i] * grad_mx[i];
-        mom_mx[i] = memory_rate * mom_mx[i] + (1 - memory_rate) * grad_mx[i];
+        mom_mx[i] = beta1 * mom_mx[i] + (1 - beta1) * grad_mx[i];
+        ada_mx[i] = beta2 * ada_mx[i] + (1 - beta2) * grad_mx[i] * grad_mx[i];
+
+        float m_hat = mom_mx[i] / b1t;
+        float v_hat = ada_mx[i] / b2t;
+
+        matrix[i] -= learning_rate * m_hat / (sqrtf(v_hat) + 1e-7f);
     }
 
     for (int i = 0; i < outsize; i++)
     {
-        ada_v[i] += grad_v[i] * grad_v[i];
-        mom_v[i] = memory_rate * mom_v[i] + (1 - memory_rate) * grad_v[i];
-    }
+        mom_v[i] = beta1 * mom_v[i] + (1 - beta1) * grad_v[i];
+        ada_v[i] = beta2 * ada_v[i] + (1 - beta2) * grad_v[i] * grad_v[i];
 
-    for (int i = 0; i < insize * outsize; i++)
-    {
-        matrix[i] -= learning_rate * mom_mx[i] / (sqrtf(ada_mx[i]) + 1e-7f);
-    }
+        float m_hat = mom_v[i] / b1t;
+        float v_hat = ada_v[i] / b2t;
 
-    for (int i = 0; i < outsize; i++)
-    {
-        vector[i] -= learning_rate * mom_v[i] / (sqrtf(ada_v[i]) + 1e-7f);
+        vector[i] -= learning_rate * m_hat / (sqrtf(v_hat) + 1e-7f);
     }
 }
 
@@ -349,7 +353,7 @@ void correct_prediction(float *output, int *answer_num, float *max_prob)
 }
 
 // 結果を出力(解析した文字と正解の文字、テストの正答率)
-void print_result(float *test_output, char *test_y, int test_count)
+float calc_accuracy(float *test_output, char *test_y, int test_count)
 {
     float accuracy = 0.0f;
 
@@ -368,7 +372,8 @@ void print_result(float *test_output, char *test_y, int test_count)
             accuracy += 1.0f;
         }
     }
-    printf("正答率 : %.2f%%\n", (accuracy / test_count) * 100.0f);
+
+    return (accuracy / test_count) * 100;
 }
 
 // コンパイル後に実行する際の引数の数によって学習モードか判定モードかを分ける
@@ -466,7 +471,7 @@ int main(int argc, char *argv[])
         float *grad_mx3 = malloc(in3 * out3 * sizeof(float));
         float *grad_v3 = malloc(out3 * sizeof(float));
 
-        // モーメンタム
+        // Momentumの勾配蓄積
         float *mom_mx1 = calloc(in1 * out1, sizeof(float));
         float *mom_v1 = calloc(out1, sizeof(float));
         float *mom_mx2 = calloc(in2 * out2, sizeof(float));
@@ -474,7 +479,7 @@ int main(int argc, char *argv[])
         float *mom_mx3 = calloc(in3 * out3, sizeof(float));
         float *mom_v3 = calloc(out3, sizeof(float));
 
-        // アダグラッド
+        // アダグラッドの勾配蓄積
         float *ada_mx1 = calloc(in1 * out1, sizeof(float));
         float *ada_v1 = calloc(out1, sizeof(float));
         float *ada_mx2 = calloc(in2 * out2, sizeof(float));
@@ -483,10 +488,12 @@ int main(int argc, char *argv[])
         float *ada_v3 = calloc(out3, sizeof(float));
 
         float loss_average;
+        float accuracy_average;
 
         for (int j = 0; j < epoc; j++)
         {
             loss_average = 0;
+            accuracy_average = 0;
             shuffle_train_data(train_x, (char *)train_y, train_count);
 
             for (int i = 0; i < train_count / mini_batch; i++)
@@ -504,18 +511,23 @@ int main(int argc, char *argv[])
                               fc2_input, relu1_input, matrix1, matrix2, matrix3, grad_fc3, grad_fc2, grad_fc1, grad_relu2, grad_relu1, grad_relu0, grad_mx3, grad_v3, grad_mx2, grad_v2, grad_mx1, grad_v1, mini_batch);
 
                 loss_average += calc_loss(final_output, answer, out3, mini_batch) / (train_count / mini_batch);
+                accuracy_average += calc_accuracy(final_output, (char *)&train_y[i * mini_batch], mini_batch) / (train_count / mini_batch);
 
-                update_parameters(matrix1, vector1, grad_mx1, grad_v1, in1, out1, mom_mx1, ada_mx1, mom_v1, ada_v1);
-                update_parameters(matrix2, vector2, grad_mx2, grad_v2, in2, out2, mom_mx2, ada_mx2, mom_v2, ada_v2);
-                update_parameters(matrix3, vector3, grad_mx3, grad_v3, in3, out3, mom_mx3, ada_mx3, mom_v3, ada_v3);
+                update_parameters(matrix1, vector1, grad_mx1, grad_v1, in1, out1, mom_mx1, ada_mx1, mom_v1, ada_v1, i + j * (train_count / mini_batch));
+                update_parameters(matrix2, vector2, grad_mx2, grad_v2, in2, out2, mom_mx2, ada_mx2, mom_v2, ada_v2, i + j * (train_count / mini_batch));
+                update_parameters(matrix3, vector3, grad_mx3, grad_v3, in3, out3, mom_mx3, ada_mx3, mom_v3, ada_v3, i + j * (train_count / mini_batch));
             }
 
             save_loss(loss_average);
+            printf("正答率 : %.2f%%\n", accuracy_average);
         }
 
-        float *params_1[] = {final_output, answer, grad_fc3, grad_fc2, grad_fc1, grad_relu2,
-                             grad_relu1, grad_relu0, relu1_input, fc2_input, relu2_input, fc3_input,
-                             sfmax_input, grad_mx1, grad_v1, grad_mx2, grad_v2, grad_mx3, grad_v3, train_x};
+        float *params_1[] = {
+            final_output, answer, grad_fc3, grad_fc2, grad_fc1, grad_relu2,
+            grad_relu1, grad_relu0, relu1_input, fc2_input, relu2_input, fc3_input,
+            sfmax_input, grad_mx1, grad_v1, grad_mx2, grad_v2, grad_mx3, grad_v3, train_x,
+            mom_mx1, mom_v1, mom_mx2, mom_v2, mom_mx3, mom_v3,
+            ada_mx1, ada_v1, ada_mx2, ada_v2, ada_mx3, ada_v3};
         free_many(params_1, sizeof(params_1) / sizeof(params_1[0]));
         free(train_y);
 
@@ -526,7 +538,7 @@ int main(int argc, char *argv[])
         float *test_output = malloc(sizeof(float) * out3 * test_count);
         forward_pass_test(test_x, test_output, test_count);
 
-        print_result(test_output, (char *)test_y, test_count);
+        printf("正答率 : %.2f%%\n", calc_accuracy(test_output, (char *)test_y, test_count));
 
         float *params_2[] = {test_x, matrix1, vector1, matrix2, vector2, matrix3, vector3, test_output};
         free_many(params_2, sizeof(params_2) / sizeof(params_2[0]));
