@@ -13,6 +13,7 @@ const int in3 = out2, out3 = 10;
 float *matrix1, *vector1, *matrix2, *vector2, *matrix3, *vector3;
 
 float learning_rate = 0.01f;
+float memory_rate = 0.9f;
 const int mini_batch = 100;
 const int epoc = 100;
 
@@ -251,47 +252,43 @@ void reset_grads(float *grad_mx, float *grad_v, int insize, int outsize)
         grad_v[i] = 0;
 }
 
-// パラメータを更新
-void update_parameters(float *matrix, float *vector, float *grad_mx, float *grad_v, int insize, int outsize)
+// パラメータを更新(Adamモデルを使用)
+void update_parameters(float *matrix, float *vector, float *grad_mx, float *grad_v, int insize, int outsize,
+                       float *mom_mx, float *ada_mx, float *mom_v, float *ada_v)
 {
     for (int i = 0; i < insize * outsize; i++)
     {
-        matrix[i] -= learning_rate * grad_mx[i];
+        ada_mx[i] += grad_mx[i] * grad_mx[i];
+        mom_mx[i] = memory_rate * mom_mx[i] + (1 - memory_rate) * grad_mx[i];
     }
 
     for (int i = 0; i < outsize; i++)
     {
-        vector[i] -= learning_rate * grad_v[i];
+        ada_v[i] += grad_v[i] * grad_v[i];
+        mom_v[i] = memory_rate * mom_v[i] + (1 - memory_rate) * grad_v[i];
+    }
+
+    for (int i = 0; i < insize * outsize; i++)
+    {
+        matrix[i] -= learning_rate * mom_mx[i] / (sqrtf(ada_mx[i]) + 1e-7f);
+    }
+
+    for (int i = 0; i < outsize; i++)
+    {
+        vector[i] -= learning_rate * mom_v[i] / (sqrtf(ada_v[i]) + 1e-7f);
     }
 }
 
-void manage_learning(float *grad_mx1, float *grad_v1, float *grad_mx2, float *grad_v2, float *grad_mx3, float *grad_v3,
-                     float current_loss, float *last_loss)
+void save_loss(float loss_average)
 {
-    if (current_loss > *last_loss * 1.7f)
-    {
-        learning_rate *= 1.2f;
-    }
-    else
-    {
-        learning_rate *= 0.98f;
-    }
-
-    update_parameters(matrix1, vector1, grad_mx1, grad_v1, in1, out1);
-    update_parameters(matrix2, vector2, grad_mx2, grad_v2, in2, out2);
-    update_parameters(matrix3, vector3, grad_mx3, grad_v3, in3, out3);
-
-    *last_loss = current_loss;
-    printf("損失関数の平均 : %f ,学習率 : %.4f\n", current_loss, learning_rate);
-
     FILE *fp = fopen("loss_history.csv", "a"); // "a"は追記モード
     if (fp != NULL)
     {
-        fprintf(fp, "%f\n", current_loss);
+        fprintf(fp, "%f\n", loss_average);
         fclose(fp);
     }
 
-    learning_rate = 0.01f;
+    printf("損失関数の平均 : %f\n", loss_average);
 }
 
 // 行列とベクトルのパラメータをファイルに保存
@@ -469,13 +466,27 @@ int main(int argc, char *argv[])
         float *grad_mx3 = malloc(in3 * out3 * sizeof(float));
         float *grad_v3 = malloc(out3 * sizeof(float));
 
-        float current_loss = 0;
-        float last_loss = FLT_MAX; // 1回目は必ず良くなっていることから前回の損失関数は最大としておく
+        // モーメンタム
+        float *mom_mx1 = calloc(in1 * out1, sizeof(float));
+        float *mom_v1 = calloc(out1, sizeof(float));
+        float *mom_mx2 = calloc(in2 * out2, sizeof(float));
+        float *mom_v2 = calloc(out2, sizeof(float));
+        float *mom_mx3 = calloc(in3 * out3, sizeof(float));
+        float *mom_v3 = calloc(out3, sizeof(float));
+
+        // アダグラッド
+        float *ada_mx1 = calloc(in1 * out1, sizeof(float));
+        float *ada_v1 = calloc(out1, sizeof(float));
+        float *ada_mx2 = calloc(in2 * out2, sizeof(float));
+        float *ada_v2 = calloc(out2, sizeof(float));
+        float *ada_mx3 = calloc(in3 * out3, sizeof(float));
+        float *ada_v3 = calloc(out3, sizeof(float));
+
+        float loss_average;
 
         for (int j = 0; j < epoc; j++)
         {
-            current_loss = 0;
-
+            loss_average = 0;
             shuffle_train_data(train_x, (char *)train_y, train_count);
 
             for (int i = 0; i < train_count / mini_batch; i++)
@@ -492,10 +503,14 @@ int main(int argc, char *argv[])
                 backward_pass(&train_x[i * in1 * mini_batch], answer, sfmax_input, final_output, fc3_input, relu2_input,
                               fc2_input, relu1_input, matrix1, matrix2, matrix3, grad_fc3, grad_fc2, grad_fc1, grad_relu2, grad_relu1, grad_relu0, grad_mx3, grad_v3, grad_mx2, grad_v2, grad_mx1, grad_v1, mini_batch);
 
-                current_loss = calc_loss(final_output, answer, out3, mini_batch);
+                loss_average += calc_loss(final_output, answer, out3, mini_batch) / (train_count / mini_batch);
 
-                manage_learning(grad_mx1, grad_v1, grad_mx2, grad_v2, grad_mx3, grad_v3, current_loss, &last_loss);
+                update_parameters(matrix1, vector1, grad_mx1, grad_v1, in1, out1, mom_mx1, ada_mx1, mom_v1, ada_v1);
+                update_parameters(matrix2, vector2, grad_mx2, grad_v2, in2, out2, mom_mx2, ada_mx2, mom_v2, ada_v2);
+                update_parameters(matrix3, vector3, grad_mx3, grad_v3, in3, out3, mom_mx3, ada_mx3, mom_v3, ada_v3);
             }
+
+            save_loss(loss_average);
         }
 
         float *params_1[] = {final_output, answer, grad_fc3, grad_fc2, grad_fc1, grad_relu2,
