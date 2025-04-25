@@ -1,3 +1,8 @@
 # 画像は除く
 picture/
 
+# Mnistのデータは除く
+mnist_data/
+
+# デバッグ用ファイルは除く
+final_assignment.dSYM/
