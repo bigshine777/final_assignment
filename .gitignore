@@ -6,3 +6,5 @@ mnist_data/
 
 # デバッグ用ファイルは除く
 final_assignment.dSYM/
+
+.venv/
