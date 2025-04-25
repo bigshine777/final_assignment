@@ -13,10 +13,12 @@ const int in3 = out2, out3 = 10;
 float *matrix1, *vector1, *matrix2, *vector2, *matrix3, *vector3;
 
 float learning_rate = 0.001f;
-float beta1 = 0.9f;
-float beta2 = 0.999f;
+float beta1 = 0.9f;   // 一次の勾配(Momentom)の記憶率
+float beta2 = 0.999f; // 二次の勾配(AdaGrad)の記憶率
 const int mini_batch = 200;
-const int epoc = 10;
+const int epoc = 15;
+
+float patient_count = 5; // 学習の限度回数
 
 // 複数のmallocを解放
 void free_many(float **params, int count)
@@ -285,7 +287,7 @@ void update_parameters(float *matrix, float *vector, float *grad_mx, float *grad
 
 void save_loss(float loss_average)
 {
-    FILE *fp = fopen("loss_history.csv", "a"); // "a"は追記モード
+    FILE *fp = fopen("loss_history/loss_history.csv", "a"); // "a"は追記モード
     if (fp != NULL)
     {
         fprintf(fp, "%f\n", loss_average);
@@ -293,6 +295,16 @@ void save_loss(float loss_average)
     }
 
     printf("損失関数の平均 : %f\n", loss_average);
+}
+
+void save_accuracy(float accuracy, char *filename)
+{
+    FILE *fp = fopen(filename, "a"); // "a"は追記モード
+    if (fp != NULL)
+    {
+        fprintf(fp, "%f\n", accuracy);
+        fclose(fp);
+    }
 }
 
 // 行列とベクトルのパラメータをファイルに保存
@@ -489,12 +501,20 @@ int main(int argc, char *argv[])
 
         float loss_average;
         float accuracy_average;
+        float test_accuracy_average;
+        float best_test_accuracy = 0;
+        float wait_count = 0;
+
+        float *test_output = malloc(sizeof(float) * out3 * test_count);
 
         for (int j = 0; j < epoc; j++)
         {
             loss_average = 0;
             accuracy_average = 0;
+            test_accuracy_average = 0;
+
             shuffle_train_data(train_x, (char *)train_y, train_count);
+            shuffle_train_data(test_x, (char *)test_y, test_count);
 
             for (int i = 0; i < train_count / mini_batch; i++)
             {
@@ -516,26 +536,24 @@ int main(int argc, char *argv[])
                 update_parameters(matrix1, vector1, grad_mx1, grad_v1, in1, out1, mom_mx1, ada_mx1, mom_v1, ada_v1, i + j * (train_count / mini_batch));
                 update_parameters(matrix2, vector2, grad_mx2, grad_v2, in2, out2, mom_mx2, ada_mx2, mom_v2, ada_v2, i + j * (train_count / mini_batch));
                 update_parameters(matrix3, vector3, grad_mx3, grad_v3, in3, out3, mom_mx3, ada_mx3, mom_v3, ada_v3, i + j * (train_count / mini_batch));
+
+                // forward_pass_test(test_x, test_output, 3000);
+                // test_accuracy_average += calc_accuracy(test_output, (char *)test_y, 3000) / (train_count / mini_batch);
             }
 
             save_loss(loss_average);
-            printf("正答率 : %.2f%%\n", accuracy_average);
+            // save_accuracy(accuracy_average, "accuracy_history/accuracy_history_train.csv");
+            // save_accuracy(test_accuracy_average, "accuracy_history/accuracy_history_test.csv");
         }
 
-        float *params_1[] = {
-            final_output, answer, grad_fc3, grad_fc2, grad_fc1, grad_relu2,
-            grad_relu1, grad_relu0, relu1_input, fc2_input, relu2_input, fc3_input,
-            sfmax_input, grad_mx1, grad_v1, grad_mx2, grad_v2, grad_mx3, grad_v3, train_x,
-            mom_mx1, mom_v1, mom_mx2, mom_v2, mom_mx3, mom_v3,
-            ada_mx1, ada_v1, ada_mx2, ada_v2, ada_mx3, ada_v3};
+        float *params_1[] = {final_output, answer, grad_fc3, grad_fc2, grad_fc1, grad_relu2, grad_relu1, grad_relu0, relu1_input, fc2_input, relu2_input, fc3_input, sfmax_input, grad_mx1, grad_v1, grad_mx2, grad_v2, grad_mx3, grad_v3, train_x, mom_mx1, mom_v1, mom_mx2, mom_v2, mom_mx3, mom_v3, ada_mx1, ada_v1, ada_mx2, ada_v2, ada_mx3, ada_v3};
         free_many(params_1, sizeof(params_1) / sizeof(params_1[0]));
         free(train_y);
 
-        save_parameters("parameter_fc1.bin", out1, in1, matrix1, vector1);
-        save_parameters("parameter_fc2.bin", out2, in2, matrix2, vector2);
-        save_parameters("parameter_fc3.bin", out3, in3, matrix3, vector3);
+        save_parameters("parameters/parameter_fc1.bin", out1, in1, matrix1, vector1);
+        save_parameters("parameters/parameter_fc2.bin", out2, in2, matrix2, vector2);
+        save_parameters("parameters/parameter_fc3.bin", out3, in3, matrix3, vector3);
 
-        float *test_output = malloc(sizeof(float) * out3 * test_count);
         forward_pass_test(test_x, test_output, test_count);
 
         printf("正答率 : %.2f%%\n", calc_accuracy(test_output, (char *)test_y, test_count));
