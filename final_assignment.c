@@ -16,7 +16,7 @@ float learning_rate = 0.001f;
 float beta1 = 0.9f;   // 一次の勾配(Momentom)の記憶率
 float beta2 = 0.999f; // 二次の勾配(AdaGrad)の記憶率
 const int mini_batch = 200;
-const int epoc = 15;
+const int epoc = 20;
 
 float patient_count = 5; // 学習の限度回数
 
@@ -537,13 +537,13 @@ int main(int argc, char *argv[])
                 update_parameters(matrix2, vector2, grad_mx2, grad_v2, in2, out2, mom_mx2, ada_mx2, mom_v2, ada_v2, i + j * (train_count / mini_batch));
                 update_parameters(matrix3, vector3, grad_mx3, grad_v3, in3, out3, mom_mx3, ada_mx3, mom_v3, ada_v3, i + j * (train_count / mini_batch));
 
-                // forward_pass_test(test_x, test_output, 3000);
-                // test_accuracy_average += calc_accuracy(test_output, (char *)test_y, 3000) / (train_count / mini_batch);
+                forward_pass_test(test_x, test_output, 3000);
+                test_accuracy_average += calc_accuracy(test_output, (char *)test_y, 3000) / (train_count / mini_batch);
             }
 
             save_loss(loss_average);
-            // save_accuracy(accuracy_average, "accuracy_history/accuracy_history_train.csv");
-            // save_accuracy(test_accuracy_average, "accuracy_history/accuracy_history_test.csv");
+            save_accuracy(accuracy_average, "accuracy_history/accuracy_history_train.csv");
+            save_accuracy(test_accuracy_average, "accuracy_history/accuracy_history_test.csv");
         }
 
         float *params_1[] = {final_output, answer, grad_fc3, grad_fc2, grad_fc1, grad_relu2, grad_relu1, grad_relu0, relu1_input, fc2_input, relu2_input, fc3_input, sfmax_input, grad_mx1, grad_v1, grad_mx2, grad_v2, grad_mx3, grad_v3, train_x, mom_mx1, mom_v1, mom_mx2, mom_v2, mom_mx3, mom_v3, ada_mx1, ada_v1, ada_mx2, ada_v2, ada_mx3, ada_v3};

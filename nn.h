@@ -199,26 +199,26 @@ void load_mnist(float **train_x, unsigned char **train_y, int *train_count,
                 int *width, int *height)
 {
     assert(train_x != NULL);
-    *train_x = load_mnist_image("train-images-idx3-ubyte", width, height, train_count);
+    *train_x = load_mnist_image("binary/train-images-idx3-ubyte", width, height, train_count);
     assert(*train_x != NULL);
     assert(*width == 28);
     assert(*height == 28);
     assert(*train_count == 60000);
 
     assert(train_y != NULL);
-    *train_y = load_mnist_label("train-labels-idx1-ubyte", train_count);
+    *train_y = load_mnist_label("binary/train-labels-idx1-ubyte", train_count);
     assert(*train_y != NULL);
     assert(*train_count == 60000);
 
     assert(test_x != NULL);
-    *test_x = load_mnist_image("t10k-images-idx3-ubyte", width, height, test_count);
+    *test_x = load_mnist_image("binary/t10k-images-idx3-ubyte", width, height, test_count);
     assert(*test_x != NULL);
     assert(*width == 28);
     assert(*height == 28);
     assert(*test_count == 10000);
 
     assert(test_y != NULL);
-    *test_y = load_mnist_label("t10k-labels-idx1-ubyte", test_count);
+    *test_y = load_mnist_label("binary/t10k-labels-idx1-ubyte", test_count);
     assert(*test_y != NULL);
     assert(*test_count == 10000);
 }
