@@ -6,8 +6,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-const int in1 = 784, out1 = 50;
-const int in2 = out1, out2 = 100;
+const int in1 = 784, out1 = 128;
+const int in2 = out1, out2 = 64;
 const int in3 = out2, out3 = 10;
 
 float *matrix1, *vector1, *matrix2, *vector2, *matrix3, *vector3;
@@ -16,9 +16,7 @@ float learning_rate = 0.001f;
 float beta1 = 0.9f;   // 一次の勾配(Momentom)の記憶率
 float beta2 = 0.999f; // 二次の勾配(AdaGrad)の記憶率
 const int mini_batch = 100;
-const int epoc = 20;
-
-float patient_count = 3; // 学習の限度回数
+const int epoc = 15;
 
 // 複数のmallocを解放
 void free_many(float **params, int count)
@@ -411,7 +409,7 @@ int main(int argc, char *argv[])
 
         for (int i = 0; i < 10; i++)
         {
-            printf("%d : %f\n", i, output[i]);
+            printf("%d : %f\n", i, output[i] * 100);
         }
 
         int answer_num = 0;
@@ -433,6 +431,7 @@ int main(int argc, char *argv[])
         unsigned char *train_y1 = NULL;
 
         int train_count = -1;
+        int train_count2 = -1;
 
         float *test_x = NULL;
         unsigned char *test_y = NULL;
@@ -442,25 +441,35 @@ int main(int argc, char *argv[])
         int height = -1;
 
         // nn.hの関数を用いて訓練データとラベルなどを取得
-        load_mnist(&train_x1, &train_x2, &train_y1, &train_count, &test_x, &test_y, &test_count, &width, &height);
+        load_mnist(&train_x1, &train_x2, &train_y1, &train_count, &train_count2, &test_x, &test_y, &test_count, &width, &height);
 
-        float *train_x = malloc(sizeof(float) * width * height * train_count * 2);
-        unsigned char *train_y = malloc(sizeof(unsigned char) * train_count * 2);
+        float *train_x = malloc(sizeof(float) * width * height * train_count * 5);
+        unsigned char *train_y = malloc(sizeof(unsigned char) * train_count * 5);
 
-        for (int i = 0; i < train_count * width * height; i++)
-        {
-            train_x[i] = train_x1[i];
-            train_x[i + train_count * width * height] = train_x2[i];
-        }
+        int image_size = width * height;
+        int total_augments = train_count2 / train_count;
 
+        // train_xにまとめる
         for (int i = 0; i < train_count; i++)
         {
-
-            train_y[i] = train_y1[i];
-            train_y[i + train_count] = train_y1[i];
+            for (int j = 0; j < total_augments; j++)
+            {
+                if (j == 0)
+                    memcpy(train_x + (i + train_count * j) * image_size, train_x1 + i * image_size, sizeof(float) * image_size);
+                else
+                    memcpy(train_x + (i + train_count * j) * image_size, train_x2 + (i + train_count * (j - 1)) * image_size, sizeof(float) * image_size);
+            }
         }
 
-        train_count *= 2;
+        // train_yにまとめる
+        for (int i = 0; i < train_count; i++)
+        {
+            for (int j = 0; j < total_augments; j++)
+                train_y[i + train_count * j] = train_y1[i];
+        }
+
+        // 最後にtrain_countを5倍にする
+        train_count *= total_augments;
 
         free(train_x1);
         free(train_x2);

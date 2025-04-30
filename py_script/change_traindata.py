@@ -6,7 +6,7 @@ import random
 
 mnist = datasets.MNIST(root="mnist_data", train=True, download=True)
 
-num_images = 60000
+num_images = 120000
 height, width = 28, 28
 
 images = []
@@ -22,7 +22,7 @@ def change_images(img):
 
 # 元の画像の全てを変換
 for i in range(num_images):
-    img, label = mnist[i]
+    img, label = mnist[i % 60000]
     img = change_images(img)
     img_np = np.array(img, dtype=np.uint8)
     images.append(img_np)
@@ -32,7 +32,7 @@ image_data = np.stack(images)
 image_data = image_data.reshape(num_images, -1)
 
 # ヘッダー情報を書く（magic number: 2051）
-with open("increased-images-idx3-ubyte", "wb") as f:
+with open("binary/increased-images-idx3-ubyte", "wb") as f:
     f.write(struct.pack(">IIII", 2051, num_images, width, height))
 
     for i in range(num_images):

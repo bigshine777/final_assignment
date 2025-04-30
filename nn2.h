@@ -194,7 +194,7 @@ unsigned char *load_mnist_label(const char *filename, int *count)
 }
 
 // MNISTのファイルを読み込む
-void load_mnist(float **train_x1, float **train_x2, unsigned char **train_y, int *train_count,
+void load_mnist(float **train_x1, float **train_x2, unsigned char **train_y, int *train_count,int *train_count2,
                 float **test_x, unsigned char **test_y, int *test_count,
                 int *width, int *height)
 {
@@ -206,11 +206,10 @@ void load_mnist(float **train_x1, float **train_x2, unsigned char **train_y, int
     assert(*train_count == 60000);
 
     assert(train_x2 != NULL);
-    *train_x2 = load_mnist_image("binary/increased-images-idx3-ubyte", width, height, train_count);
+    *train_x2 = load_mnist_image("binary/increased-images-idx3-ubyte", width, height, train_count2);
     assert(*train_x2 != NULL);
     assert(*width == 28);
     assert(*height == 28);
-    assert(*train_count == 60000);
 
     assert(train_y != NULL);
     *train_y = load_mnist_label("binary/train-labels-idx1-ubyte", train_count);
