@@ -2,6 +2,7 @@
     "files.associations": {
         "*.ejs": "html",
         "__locale": "c",
-        "ios": "c"
+        "ios": "c",
+        "valarray": "c"
     }
 }

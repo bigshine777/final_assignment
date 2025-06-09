@@ -1,4 +1,4 @@
-#include "nn.h"
+#include "nn2.h"
 #include <math.h>
 #include <time.h>
 
@@ -6,19 +6,18 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-const int in1 = 784, out1 = 50;
-const int in2 = out1, out2 = 100;
-const int in3 = out2, out3 = 10;
+const int in1 = 784, out1 = 512;
+const int in2 = out1, out2 = 256;
+const int in3 = out2, out3 = 64;
+const int in4 = out3, out4 = 64;
 
-float *matrix1, *vector1, *matrix2, *vector2, *matrix3, *vector3;
+float *matrix1, *vector1, *matrix2, *vector2, *matrix3, *vector3, *matrix4, *vector4;
 
 float learning_rate = 0.001f;
 float beta1 = 0.9f;   // 一次の勾配(Momentom)の記憶率
 float beta2 = 0.999f; // 二次の勾配(AdaGrad)の記憶率
-const int mini_batch = 200;
-const int epoc = 20;
-
-float patient_count = 5; // 学習の限度回数
+const int mini_batch = 100;
+const int epoc = 15;
 
 // 複数のmallocを解放
 void free_many(float **params, int count)
@@ -45,7 +44,7 @@ void reset_parameters(float *params, int insize, int outsize)
         params[i] = normrand() * scale;
 }
 
-// Fisher-Yatesのシャッフルアルゴリズムに基づいたtrain_xとtrain_yのランダムな並べ替え
+// Fisher-Yatesのシャッフルアルゴリズムに基づいたtrain_xとtrain_y1のランダムな並べ替え
 void shuffle_train_data(float *train_x, char *train_y, int train_count)
 {
     for (int i = train_count - 1; i > 0; i--)
@@ -60,7 +59,7 @@ void shuffle_train_data(float *train_x, char *train_y, int train_count)
             train_x[j * in1 + k] = temp_x;
         }
 
-        // train_yのtrain_xの交換に基づく交換
+        // train_y1のtrain_xの交換に基づく交換
         char temp_y = train_y[i];
         train_y[i] = train_y[j];
         train_y[j] = temp_y;
@@ -127,7 +126,7 @@ void Sfmax(float *input, float *output, int outsize, int mini_batch)
 
 // 順伝播の処理
 void forward_pass(float *input, float *output, float *relu1_input, float *fc2_input,
-                  float *relu2_input, float *fc3_input, float *sfmax_input, int mini_batch)
+                  float *relu2_input, float *fc3_input, float *relu3_input, float *fc4_input, float *sfmax_input)
 {
     FC_filter(input, relu1_input, matrix1, in1, out1, vector1, mini_batch);
 
@@ -137,9 +136,13 @@ void forward_pass(float *input, float *output, float *relu1_input, float *fc2_in
 
     ReLU_filter(relu2_input, fc3_input, out2 * mini_batch);
 
-    FC_filter(fc3_input, sfmax_input, matrix3, in3, out3, vector3, mini_batch);
+    FC_filter(fc3_input, relu3_input, matrix3, in3, out3, vector3, mini_batch);
 
-    Sfmax(sfmax_input, output, out3, mini_batch);
+    ReLU_filter(relu3_input, fc4_input, out3 * mini_batch);
+
+    FC_filter(fc4_input, sfmax_input, matrix4, in4, out4, vector4, mini_batch);
+
+    Sfmax(sfmax_input, output, out4, mini_batch);
 }
 
 // テスト用
@@ -150,6 +153,8 @@ void forward_pass_test(float *input, float *output, int test_count)
     float *input3 = malloc(sizeof(float) * out2 * test_count);
     float *input4 = malloc(sizeof(float) * out2 * test_count);
     float *input5 = malloc(sizeof(float) * out3 * test_count);
+    float *input6 = malloc(sizeof(float) * out3 * test_count);
+    float *input7 = malloc(sizeof(float) * out4 * test_count);
 
     FC_filter(input, input1, matrix1, in1, out1, vector1, test_count);
 
@@ -161,14 +166,18 @@ void forward_pass_test(float *input, float *output, int test_count)
 
     FC_filter(input4, input5, matrix3, in3, out3, vector3, test_count);
 
-    Sfmax(input5, output, out3, test_count);
+    ReLU_filter(input5, input6, out3 * test_count);
+
+    FC_filter(input6, input7, matrix4, in4, out4, vector4, test_count);
+
+    Sfmax(input7, output, out4, test_count);
 
     float *params[] = {input1, input2, input3, input4, input5};
     free_many(params, sizeof(params) / sizeof(params[0]));
 }
 
 // 正解ラベルをベクトル化
-void set_answer(float *answer, char *answer_label, int mini_batch, int outsize)
+void set_answer(float *answer, char *answer_label, int outsize)
 {
     for (int i = 0; i < mini_batch; i++)
     {
@@ -207,12 +216,11 @@ void backward_relu(float *grad_relu, float *grad_fc, float *fc_input, float *gra
         // Relu層への勾配の計算
         for (int n = 0; n < insize; n++)
         {
-            float sum = 0;
+            grad_relu[i * insize + n] = 0;
             for (int j = 0; j < outsize; j++)
             {
-                sum += matrix[j * insize + n] * grad_fc[i * outsize + j];
+                grad_relu[i * insize + n] += matrix[j * insize + n] * grad_fc[i * outsize + j];
             }
-            grad_relu[i * insize + n] = sum;
         }
     }
 }
@@ -227,13 +235,15 @@ void backward_fc(float *grad_fc, float *grad_relu, float *relu_input, int mini_b
 }
 
 // 逆伝播の処理
-void backward_pass(float *train_x, float *answer, float *sfmax_input, float *final_output, float *fc3_input,
-                   float *relu2_input, float *fc2_input, float *relu1_input, float *matrix1, float *matrix2, float *matrix3,
-                   float *grad_fc3, float *grad_fc2, float *grad_fc1, float *grad_relu2, float *grad_relu1, float *grad_relu0,
-                   float *grad_mx3, float *grad_v3, float *grad_mx2, float *grad_v2, float *grad_mx1, float *grad_v1,
-                   int mini_batch)
+void backward_pass(float *train_x, float *answer, float *final_output, float *sfmax_input, float *fc4_input,
+                   float *relu3_input, float *fc3_input, float *relu2_input, float *fc2_input, float *relu1_input,
+                   float *grad_fc4, float *grad_fc3, float *grad_fc2, float *grad_fc1, float *grad_relu3, float *grad_relu2, float *grad_relu1, float *grad_relu0, float *grad_mx4, float *grad_v4, float *grad_mx3, float *grad_v3, float *grad_mx2, float *grad_v2, float *grad_mx1, float *grad_v1)
 {
-    backward_softmax_fc(grad_fc3, final_output, answer, mini_batch, out3);
+    backward_softmax_fc(grad_fc4, final_output, answer, mini_batch, out4);
+
+    backward_relu(grad_relu3, grad_fc4, fc4_input, grad_mx4, grad_v4, mini_batch, matrix4, in4, out4);
+
+    backward_fc(grad_fc3, grad_relu3, relu3_input, mini_batch, out3);
 
     backward_relu(grad_relu2, grad_fc3, fc3_input, grad_mx3, grad_v3, mini_batch, matrix3, in3, out3);
 
@@ -354,7 +364,7 @@ void correct_prediction(float *output, int *answer_num, float *max_prob)
 {
     *answer_num = 0;
     *max_prob = output[0];
-    for (int j = 1; j < out3; j++)
+    for (int j = 1; j < out4; j++)
     {
         if (output[j] > *max_prob)
         {
@@ -371,7 +381,7 @@ float calc_accuracy(float *test_output, char *test_y, int test_count)
 
     for (int i = 0; i < test_count; i++)
     {
-        float *output = &test_output[i * out3]; // 各テスト画像の出力部分だけ渡す
+        float *output = &test_output[i * out4]; // 各テスト画像の出力部分だけ渡す
         int answer_num;
         float max_prob;
 
@@ -391,10 +401,10 @@ float calc_accuracy(float *test_output, char *test_y, int test_count)
 // コンパイル後に実行する際の引数の数によって学習モードか判定モードかを分ける
 int main(int argc, char *argv[])
 {
-    if (argc == 5)
+    if (argc == 6)
     {
-        float *input = load_mnist_bmp(argv[4]);
-        float output[out3];
+        float *input = load_mnist_bmp(argv[5]);
+        float output[out4];
 
         matrix1 = malloc(sizeof(float) * in1 * out1);
         vector1 = calloc(out1, sizeof(float));
@@ -402,16 +412,19 @@ int main(int argc, char *argv[])
         vector2 = calloc(out2, sizeof(float));
         matrix3 = malloc(sizeof(float) * in3 * out3);
         vector3 = calloc(out3, sizeof(float));
+        matrix4 = malloc(sizeof(float) * in4 * out4);
+        vector4 = calloc(out4, sizeof(float));
 
         load_parameters(argv[1], out1, in1, matrix1, vector1);
         load_parameters(argv[2], out2, in2, matrix2, vector2);
         load_parameters(argv[3], out3, in3, matrix3, vector3);
+        load_parameters(argv[4], out4, in4, matrix4, vector4);
 
         forward_pass_test(input, output, 1);
 
         for (int i = 0; i < 10; i++)
         {
-            printf("%d : %f\n", i, output[i]);
+            printf("%d : %f\n", i, output[i] * 100);
         }
 
         int answer_num = 0;
@@ -421,16 +434,19 @@ int main(int argc, char *argv[])
 
         printf("予測結果 : %d\n", answer_num);
 
-        float *params[] = {input, matrix1, vector1, matrix2, vector2, matrix3, vector3};
+        float *params[] = {input, matrix1, vector1, matrix2, vector2, matrix3, vector3, matrix4, vector4};
         free_many(params, sizeof(params) / sizeof(params[0]));
     }
     else
     {
         srand((unsigned int)time(NULL)); // 乱数初期化
 
-        float *train_x = NULL;
-        unsigned char *train_y = NULL;
+        float *train_x1 = NULL;
+        float *train_x2 = NULL;
+        unsigned char *train_y1 = NULL;
+
         int train_count = -1;
+        int train_count2 = -1;
 
         float *test_x = NULL;
         unsigned char *test_y = NULL;
@@ -440,9 +456,39 @@ int main(int argc, char *argv[])
         int height = -1;
 
         // nn.hの関数を用いて訓練データとラベルなどを取得
-        load_mnist(&train_x, &train_y, &train_count,
-                   &test_x, &test_y, &test_count,
-                   &width, &height);
+        load_mnist(&train_x1, &train_x2, &train_y1, &train_count, &train_count2, &test_x, &test_y, &test_count, &width, &height);
+
+        float *train_x = malloc(sizeof(float) * width * height * train_count * 5);
+        unsigned char *train_y = malloc(sizeof(unsigned char) * train_count * 5);
+
+        int image_size = width * height;
+        int total_augments = train_count2 / train_count;
+
+        // train_xにまとめる
+        for (int i = 0; i < train_count; i++)
+        {
+            for (int j = 0; j < total_augments; j++)
+            {
+                if (j == 0)
+                    memcpy(train_x + (i + train_count * j) * image_size, train_x1 + i * image_size, sizeof(float) * image_size);
+                else
+                    memcpy(train_x + (i + train_count * j) * image_size, train_x2 + (i + train_count * (j - 1)) * image_size, sizeof(float) * image_size);
+            }
+        }
+
+        // train_yにまとめる
+        for (int i = 0; i < train_count; i++)
+        {
+            for (int j = 0; j < total_augments; j++)
+                train_y[i + train_count * j] = train_y1[i];
+        }
+
+        // 最後にtrain_countを5倍にする
+        train_count *= total_augments;
+
+        free(train_x1);
+        free(train_x2);
+        free(train_y1);
 
         // 行列とベクトルの配列をmallocでヒープ領域に確保
         matrix1 = malloc(sizeof(float) * in1 * out1);
@@ -451,26 +497,33 @@ int main(int argc, char *argv[])
         vector2 = calloc(out2, sizeof(float));
         matrix3 = malloc(sizeof(float) * in3 * out3);
         vector3 = calloc(out3, sizeof(float));
+        matrix4 = malloc(sizeof(float) * in4 * out4);
+        vector4 = calloc(out4, sizeof(float));
 
         reset_parameters(matrix1, in1, out1);
         reset_parameters(matrix2, in2, out2);
         reset_parameters(matrix3, in3, out3);
+        reset_parameters(matrix4, in4, out4);
 
         // 各層の入力をmallocでヒープ領域に確保
         float *relu1_input = malloc(sizeof(float) * mini_batch * out1);
         float *fc2_input = malloc(sizeof(float) * mini_batch * out1);
         float *relu2_input = malloc(sizeof(float) * mini_batch * out2);
         float *fc3_input = malloc(sizeof(float) * mini_batch * out2);
-        float *sfmax_input = malloc(sizeof(float) * mini_batch * out3);
-        float *final_output = malloc(sizeof(float) * mini_batch * out3);
+        float *relu3_input = malloc(sizeof(float) * mini_batch * out3);
+        float *fc4_input = malloc(sizeof(float) * mini_batch * out3);
+        float *sfmax_input = malloc(sizeof(float) * mini_batch * out4);
+        float *final_output = malloc(sizeof(float) * mini_batch * out4);
 
         // 正解ベクトル(t)を作成
-        float *answer = malloc(sizeof(float) * mini_batch * out3);
+        float *answer = malloc(sizeof(float) * mini_batch * out4);
 
         // 各関数の勾配はミニバッチ分確保し、行列とベクトルは平均を代入
+        float *grad_fc4 = malloc(sizeof(float) * mini_batch * out4);
         float *grad_fc3 = malloc(sizeof(float) * mini_batch * out3);
         float *grad_fc2 = malloc(sizeof(float) * mini_batch * out2);
         float *grad_fc1 = malloc(sizeof(float) * mini_batch * out1);
+        float *grad_relu3 = malloc(sizeof(float) * mini_batch * out3);
         float *grad_relu2 = malloc(sizeof(float) * mini_batch * out2);
         float *grad_relu1 = malloc(sizeof(float) * mini_batch * out1);
         float *grad_relu0 = malloc(sizeof(float) * mini_batch * in1);
@@ -482,6 +535,8 @@ int main(int argc, char *argv[])
         float *grad_v2 = malloc(out2 * sizeof(float));
         float *grad_mx3 = malloc(in3 * out3 * sizeof(float));
         float *grad_v3 = malloc(out3 * sizeof(float));
+        float *grad_mx4 = malloc(in4 * out4 * sizeof(float));
+        float *grad_v4 = malloc(out4 * sizeof(float));
 
         // Momentumの勾配蓄積
         float *mom_mx1 = calloc(in1 * out1, sizeof(float));
@@ -490,6 +545,8 @@ int main(int argc, char *argv[])
         float *mom_v2 = calloc(out2, sizeof(float));
         float *mom_mx3 = calloc(in3 * out3, sizeof(float));
         float *mom_v3 = calloc(out3, sizeof(float));
+        float *mom_mx4 = calloc(in4 * out4, sizeof(float));
+        float *mom_v4 = calloc(out4, sizeof(float));
 
         // アダグラッドの勾配蓄積
         float *ada_mx1 = calloc(in1 * out1, sizeof(float));
@@ -498,52 +555,42 @@ int main(int argc, char *argv[])
         float *ada_v2 = calloc(out2, sizeof(float));
         float *ada_mx3 = calloc(in3 * out3, sizeof(float));
         float *ada_v3 = calloc(out3, sizeof(float));
+        float *ada_mx4 = calloc(in4 * out4, sizeof(float));
+        float *ada_v4 = calloc(out4, sizeof(float));
 
         float loss_average;
-        float accuracy_average;
-        float test_accuracy_average;
-        float best_test_accuracy = 0;
-        float wait_count = 0;
 
-        float *test_output = malloc(sizeof(float) * out3 * test_count);
+        float *test_output = malloc(sizeof(float) * out4 * test_count);
 
         for (int j = 0; j < epoc; j++)
         {
             loss_average = 0;
-            accuracy_average = 0;
-            test_accuracy_average = 0;
 
             shuffle_train_data(train_x, (char *)train_y, train_count);
-            shuffle_train_data(test_x, (char *)test_y, test_count);
 
             for (int i = 0; i < train_count / mini_batch; i++)
             {
                 reset_grads(grad_mx1, grad_v1, in1, out1);
                 reset_grads(grad_mx2, grad_v2, in2, out2);
                 reset_grads(grad_mx3, grad_v3, in3, out3);
+                reset_grads(grad_mx4, grad_v4, in4, out4);
 
                 forward_pass(&train_x[i * in1 * mini_batch], final_output, relu1_input, fc2_input, relu2_input,
-                             fc3_input, sfmax_input, mini_batch);
+                             fc3_input, relu3_input, fc4_input, sfmax_input);
 
-                set_answer(answer, (char *)&train_y[i * mini_batch], mini_batch, out3);
+                set_answer(answer, (char *)&train_y[i * mini_batch], out3);
 
-                backward_pass(&train_x[i * in1 * mini_batch], answer, sfmax_input, final_output, fc3_input, relu2_input,
-                              fc2_input, relu1_input, matrix1, matrix2, matrix3, grad_fc3, grad_fc2, grad_fc1, grad_relu2, grad_relu1, grad_relu0, grad_mx3, grad_v3, grad_mx2, grad_v2, grad_mx1, grad_v1, mini_batch);
+                backward_pass(&train_x[i * in1 * mini_batch], answer, final_output, sfmax_input, fc4_input, relu3_input, fc3_input, relu2_input, fc2_input, relu1_input, grad_fc4, grad_fc3, grad_fc2, grad_fc1, grad_relu3, grad_relu2, grad_relu1, grad_relu0, grad_mx4, grad_v4, grad_mx3, grad_v3, grad_mx2, grad_v2, grad_mx1, grad_v1);
 
                 loss_average += calc_loss(final_output, answer, out3, mini_batch) / (train_count / mini_batch);
-                accuracy_average += calc_accuracy(final_output, (char *)&train_y[i * mini_batch], mini_batch) / (train_count / mini_batch);
 
                 update_parameters(matrix1, vector1, grad_mx1, grad_v1, in1, out1, mom_mx1, ada_mx1, mom_v1, ada_v1, i + j * (train_count / mini_batch));
                 update_parameters(matrix2, vector2, grad_mx2, grad_v2, in2, out2, mom_mx2, ada_mx2, mom_v2, ada_v2, i + j * (train_count / mini_batch));
                 update_parameters(matrix3, vector3, grad_mx3, grad_v3, in3, out3, mom_mx3, ada_mx3, mom_v3, ada_v3, i + j * (train_count / mini_batch));
-
-                forward_pass_test(test_x, test_output, 3000);
-                test_accuracy_average += calc_accuracy(test_output, (char *)test_y, 3000) / (train_count / mini_batch);
+                update_parameters(matrix4, vector4, grad_mx4, grad_v4, in4, out4, mom_mx4, ada_mx4, mom_v4, ada_v4, i + j * (train_count / mini_batch));
             }
 
             save_loss(loss_average);
-            save_accuracy(accuracy_average, "accuracy_history/accuracy_history_train.csv");
-            save_accuracy(test_accuracy_average, "accuracy_history/accuracy_history_test.csv");
         }
 
         float *params_1[] = {final_output, answer, grad_fc3, grad_fc2, grad_fc1, grad_relu2, grad_relu1, grad_relu0, relu1_input, fc2_input, relu2_input, fc3_input, sfmax_input, grad_mx1, grad_v1, grad_mx2, grad_v2, grad_mx3, grad_v3, train_x, mom_mx1, mom_v1, mom_mx2, mom_v2, mom_mx3, mom_v3, ada_mx1, ada_v1, ada_mx2, ada_v2, ada_mx3, ada_v3};
@@ -553,6 +600,7 @@ int main(int argc, char *argv[])
         save_parameters("parameters/parameter_fc1.bin", out1, in1, matrix1, vector1);
         save_parameters("parameters/parameter_fc2.bin", out2, in2, matrix2, vector2);
         save_parameters("parameters/parameter_fc3.bin", out3, in3, matrix3, vector3);
+        save_parameters("parameters/parameter_fc4.bin", out4, in4, matrix4, vector4);
 
         forward_pass_test(test_x, test_output, test_count);
 
@@ -561,6 +609,9 @@ int main(int argc, char *argv[])
         float *params_2[] = {test_x, matrix1, vector1, matrix2, vector2, matrix3, vector3, test_output};
         free_many(params_2, sizeof(params_2) / sizeof(params_2[0]));
         free(test_y);
+
+        float *params_3[] = {matrix4, vector4, grad_fc4, grad_relu3, grad_mx4, grad_v4, mom_mx4, mom_v4, ada_mx4, ada_v4};
+        free_many(params_3, sizeof(params_3) / sizeof(params_3[0]));
     }
 
 /* 浮動小数点例外で停止することを確認するためのコード */

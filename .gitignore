@@ -8,3 +8,5 @@ mnist_data/
 final_assignment.dSYM/
 
 .venv/
+
+*.dSYM/
