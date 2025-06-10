@@ -8,8 +8,8 @@
 
 const int in1 = 784, out1 = 512;
 const int in2 = out1, out2 = 256;
-const int in3 = out2, out3 = 64;
-const int in4 = out3, out4 = 64;
+const int in3 = out2, out3 = 128;
+const int in4 = out3, out4 = 10;
 
 float *matrix1, *vector1, *matrix2, *vector2, *matrix3, *vector3, *matrix4, *vector4;
 
@@ -172,7 +172,7 @@ void forward_pass_test(float *input, float *output, int test_count)
 
     Sfmax(input7, output, out4, test_count);
 
-    float *params[] = {input1, input2, input3, input4, input5};
+    float *params[] = {input1, input2, input3, input4, input5, input6, input7};
     free_many(params, sizeof(params) / sizeof(params[0]));
 }
 
@@ -307,16 +307,6 @@ void save_loss(float loss_average)
     printf("損失関数の平均 : %f\n", loss_average);
 }
 
-void save_accuracy(float accuracy, char *filename)
-{
-    FILE *fp = fopen(filename, "a"); // "a"は追記モード
-    if (fp != NULL)
-    {
-        fprintf(fp, "%f\n", accuracy);
-        fclose(fp);
-    }
-}
-
 // 行列とベクトルのパラメータをファイルに保存
 void save_parameters(const char *filename, int outsize, int insize, float *matrix, float *vector)
 {
@@ -345,14 +335,14 @@ void load_parameters(const char *filename, int out_size, int in_size, float *mat
 }
 
 // 損失関数のミニバッチごとの平均を導出
-float calc_loss(float *output, float *answer, int out3, int mini_batch)
+float calc_loss(float *output, float *answer, int outsize, int mini_batch)
 {
     float loss = 0.0f;
     for (int j = 0; j < mini_batch; j++)
     {
-        for (int i = 0; i < out3; i++)
+        for (int i = 0; i < outsize; i++)
         {
-            loss -= answer[i + j * out3] * logf(output[i + j * out3] + 1e-7f);
+            loss -= answer[i + j * outsize] * logf(output[i + j * outsize] + 1e-7f);
         }
     }
 
@@ -439,7 +429,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        srand((unsigned int)time(NULL)); // 乱数初期化
+        srand(time(NULL)); // 乱数初期化
 
         float *train_x1 = NULL;
         float *train_x2 = NULL;
@@ -455,25 +445,20 @@ int main(int argc, char *argv[])
         int width = -1;
         int height = -1;
 
-        // nn.hの関数を用いて訓練データとラベルなどを取得
+        // nn2.hの関数を用いて訓練データとラベルなどを取得
         load_mnist(&train_x1, &train_x2, &train_y1, &train_count, &train_count2, &test_x, &test_y, &test_count, &width, &height);
 
-        float *train_x = malloc(sizeof(float) * width * height * train_count * 5);
-        unsigned char *train_y = malloc(sizeof(unsigned char) * train_count * 5);
+        int total_augments = (train_count + train_count2) / train_count;
+        float *train_x = malloc(sizeof(float) * width * height * train_count * total_augments);
+        unsigned char *train_y = malloc(sizeof(unsigned char) * train_count * total_augments);
 
         int image_size = width * height;
-        int total_augments = train_count2 / train_count;
 
         // train_xにまとめる
         for (int i = 0; i < train_count; i++)
         {
-            for (int j = 0; j < total_augments; j++)
-            {
-                if (j == 0)
-                    memcpy(train_x + (i + train_count * j) * image_size, train_x1 + i * image_size, sizeof(float) * image_size);
-                else
-                    memcpy(train_x + (i + train_count * j) * image_size, train_x2 + (i + train_count * (j - 1)) * image_size, sizeof(float) * image_size);
-            }
+            memcpy(train_x + i * image_size, train_x1 + i * image_size, sizeof(float) * image_size);
+            memcpy(train_x + (i + train_count) * image_size, train_x2 + i * image_size, sizeof(float) * image_size);
         }
 
         // train_yにまとめる
@@ -483,7 +468,7 @@ int main(int argc, char *argv[])
                 train_y[i + train_count * j] = train_y1[i];
         }
 
-        // 最後にtrain_countを5倍にする
+        // 最後にtrain_countを調整する
         train_count *= total_augments;
 
         free(train_x1);
@@ -578,11 +563,11 @@ int main(int argc, char *argv[])
                 forward_pass(&train_x[i * in1 * mini_batch], final_output, relu1_input, fc2_input, relu2_input,
                              fc3_input, relu3_input, fc4_input, sfmax_input);
 
-                set_answer(answer, (char *)&train_y[i * mini_batch], out3);
+                set_answer(answer, (char *)&train_y[i * mini_batch], out4);
 
                 backward_pass(&train_x[i * in1 * mini_batch], answer, final_output, sfmax_input, fc4_input, relu3_input, fc3_input, relu2_input, fc2_input, relu1_input, grad_fc4, grad_fc3, grad_fc2, grad_fc1, grad_relu3, grad_relu2, grad_relu1, grad_relu0, grad_mx4, grad_v4, grad_mx3, grad_v3, grad_mx2, grad_v2, grad_mx1, grad_v1);
 
-                loss_average += calc_loss(final_output, answer, out3, mini_batch) / (train_count / mini_batch);
+                loss_average += calc_loss(final_output, answer, out4, mini_batch) / (train_count / mini_batch);
 
                 update_parameters(matrix1, vector1, grad_mx1, grad_v1, in1, out1, mom_mx1, ada_mx1, mom_v1, ada_v1, i + j * (train_count / mini_batch));
                 update_parameters(matrix2, vector2, grad_mx2, grad_v2, in2, out2, mom_mx2, ada_mx2, mom_v2, ada_v2, i + j * (train_count / mini_batch));
@@ -593,7 +578,7 @@ int main(int argc, char *argv[])
             save_loss(loss_average);
         }
 
-        float *params_1[] = {final_output, answer, grad_fc3, grad_fc2, grad_fc1, grad_relu2, grad_relu1, grad_relu0, relu1_input, fc2_input, relu2_input, fc3_input, sfmax_input, grad_mx1, grad_v1, grad_mx2, grad_v2, grad_mx3, grad_v3, train_x, mom_mx1, mom_v1, mom_mx2, mom_v2, mom_mx3, mom_v3, ada_mx1, ada_v1, ada_mx2, ada_v2, ada_mx3, ada_v3};
+        float *params_1[] = {final_output, answer, grad_fc4, grad_fc3, grad_fc2, grad_fc1, grad_relu2, grad_relu1, grad_relu0, relu1_input, fc2_input, relu2_input, fc3_input, sfmax_input, grad_mx1, grad_v1, grad_mx2, grad_v2, grad_mx3, grad_v3, train_x, mom_mx1, mom_v1, mom_mx2, mom_v2, mom_mx3, mom_v3, ada_mx1, ada_v1, ada_mx2, ada_v2, ada_mx3, ada_v3};
         free_many(params_1, sizeof(params_1) / sizeof(params_1[0]));
         free(train_y);
 
@@ -610,7 +595,7 @@ int main(int argc, char *argv[])
         free_many(params_2, sizeof(params_2) / sizeof(params_2[0]));
         free(test_y);
 
-        float *params_3[] = {matrix4, vector4, grad_fc4, grad_relu3, grad_mx4, grad_v4, mom_mx4, mom_v4, ada_mx4, ada_v4};
+        float *params_3[] = {matrix4, vector4, grad_relu3, grad_mx4, grad_v4, mom_mx4, mom_v4, ada_mx4, ada_v4};
         free_many(params_3, sizeof(params_3) / sizeof(params_3[0]));
     }
 

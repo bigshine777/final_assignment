@@ -438,7 +438,7 @@ int main(int argc, char *argv[])
         load_mnist(&train_x1, &train_x2, &train_y1, &train_count, &train_count2, &test_x, &test_y, &test_count, &width, &height);
 
         int image_size = width * height;
-        int total_augments = train_count2 / train_count;
+        int total_augments = (train_count2 + train_count) / train_count;
 
         float *train_x = malloc(sizeof(float) * width * height * train_count * total_augments);
         unsigned char *train_y = malloc(sizeof(unsigned char) * train_count * total_augments);

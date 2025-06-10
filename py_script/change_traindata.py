@@ -6,7 +6,7 @@ import random
 
 mnist = datasets.MNIST(root="mnist_data", train=True, download=True)
 
-num_images = 120000
+num_images = 60000
 height, width = 28, 28
 
 images = []
